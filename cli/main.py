@@ -1,3 +1,8 @@
+# 修复Windows Unicode编码问题
+import os
+import sys
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 from typing import Optional
 import datetime
 import typer

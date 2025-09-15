@@ -1,3 +1,8 @@
+# 修复Windows Unicode编码问题
+import os
+import sys
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 

@@ -1,0 +1,5 @@
+Based on the comprehensive analysis provided, the decision to sell CNOOC (300515) is well-supported by both macroeconomic and sector-specific risks. The company's heavy reliance on oil, slow transition to renewable energy, and structural challenges as a state-owned enterprise all point to a deteriorating long-term outlook. Additionally, geopolitical tensions and the risk of sanctions further compound the investment risk.
+
+The recommendation to exit the position immediately aligns with the lessons learned from past mistakes¡ªnamely, that holding onto fading energy plays can lead to significant losses when the market shifts. The focus should now be on reallocating capital toward more resilient and forward-looking sectors, such as renewables or diversified energy majors that are better positioned for the future.
+
+FINAL TRANSACTION PROPOSAL: **SELL**

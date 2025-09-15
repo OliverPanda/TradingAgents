@@ -5,6 +5,7 @@
 
 import os
 import json
+import time
 from typing import Any, Dict, List, Optional, Union, Iterator, AsyncIterator, Sequence
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
@@ -117,67 +118,90 @@ class ChatDashScope(BaseChatModel):
         # 合并额外参数
         request_params.update(kwargs)
         
-        try:
-            # 调用 DashScope API
-            response = Generation.call(**request_params)
-            
-            if response.status_code == 200:
-                # 解析响应
-                output = response.output
-                message_content = output.choices[0].message.content
+        # 添加重试和超时处理
+        max_retries = 3
+        timeout = 60  # 60秒超时
+        
+        for attempt in range(max_retries):
+            try:
+                # 调用 DashScope API
+                response = Generation.call(**request_params)
                 
-                # 提取token使用量信息
-                input_tokens = 0
-                output_tokens = 0
-                
-                # DashScope API响应中包含usage信息
-                if hasattr(response, 'usage') and response.usage:
-                    usage = response.usage
-                    # 根据API文档，usage可能包含input_tokens和output_tokens
-                    if hasattr(usage, 'input_tokens'):
-                        input_tokens = usage.input_tokens
-                    if hasattr(usage, 'output_tokens'):
-                        output_tokens = usage.output_tokens
-                    # 有些情况下可能是total_tokens
-                    elif hasattr(usage, 'total_tokens'):
-                        # 估算输入和输出token（如果没有分别提供）
-                        total_tokens = usage.total_tokens
-                        # 简单估算：假设输入占30%，输出占70%
-                        input_tokens = int(total_tokens * 0.3)
-                        output_tokens = int(total_tokens * 0.7)
-                
-                # 记录token使用量
-                if input_tokens > 0 or output_tokens > 0:
-                    try:
-                        # 生成会话ID（如果没有提供）
-                        session_id = kwargs.get('session_id', f"dashscope_{hash(str(messages))%10000}")
-                        analysis_type = kwargs.get('analysis_type', 'stock_analysis')
+                if response.status_code == 200:
+                    # 解析响应
+                    output = response.output
+                    message_content = output.choices[0].message.content
+                    
+                    # 提取token使用量信息
+                    input_tokens = 0
+                    output_tokens = 0
+                    
+                    # DashScope API响应中包含usage信息
+                    if hasattr(response, 'usage') and response.usage:
+                        usage = response.usage
+                        # 根据API文档，usage可能包含input_tokens和output_tokens
+                        if hasattr(usage, 'input_tokens'):
+                            input_tokens = usage.input_tokens
+                        if hasattr(usage, 'output_tokens'):
+                            output_tokens = usage.output_tokens
+                        # 有些情况下可能是total_tokens
+                        elif hasattr(usage, 'total_tokens'):
+                            # 估算输入和输出token（如果没有分别提供）
+                            total_tokens = usage.total_tokens
+                            # 简单估算：假设输入占30%，输出占70%
+                            input_tokens = int(total_tokens * 0.3)
+                            output_tokens = int(total_tokens * 0.7)
+                    
+                    # 记录token使用量
+                    if input_tokens > 0 or output_tokens > 0:
+                        try:
+                            # 生成会话ID（如果没有提供）
+                            session_id = kwargs.get('session_id', f"dashscope_{hash(str(messages))%10000}")
+                            analysis_type = kwargs.get('analysis_type', 'stock_analysis')
+                            
+                            # 使用TokenTracker记录使用量
+                            token_tracker.track_usage(
+                                provider="dashscope",
+                                model_name=self.model,
+                                input_tokens=input_tokens,
+                                output_tokens=output_tokens,
+                                session_id=session_id,
+                                analysis_type=analysis_type
+                            )
+                        except Exception as track_error:
+                            # 记录失败不应该影响主要功能
+                            print(f"Token tracking failed: {track_error}")
+                    
+                    # 创建 AI 消息
+                    ai_message = AIMessage(content=message_content)
+                    
+                    # 创建生成结果
+                    generation = ChatGeneration(message=ai_message)
+                    
+                    return ChatResult(generations=[generation])
+                else:
+                    error_msg = f"DashScope API error: {response.code} - {response.message}"
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ DashScope API错误，第{attempt + 1}次重试: {error_msg}")
+                        time.sleep(2 ** attempt)  # 指数退避
+                        continue
+                    else:
+                        raise Exception(error_msg)
                         
-                        # 使用TokenTracker记录使用量
-                        token_tracker.track_usage(
-                            provider="dashscope",
-                            model_name=self.model,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            session_id=session_id,
-                            analysis_type=analysis_type
-                        )
-                    except Exception as track_error:
-                        # 记录失败不应该影响主要功能
-                        print(f"Token tracking failed: {track_error}")
-                
-                # 创建 AI 消息
-                ai_message = AIMessage(content=message_content)
-                
-                # 创建生成结果
-                generation = ChatGeneration(message=ai_message)
-                
-                return ChatResult(generations=[generation])
-            else:
-                raise Exception(f"DashScope API error: {response.code} - {response.message}")
-                
-        except Exception as e:
-            raise Exception(f"Error calling DashScope API: {str(e)}")
+            except (ConnectionError, TimeoutError, OSError) as e:
+                if attempt < max_retries - 1:
+                    print(f"⚠️ DashScope连接超时，第{attempt + 1}次重试: {str(e)}")
+                    time.sleep(2 ** attempt)  # 指数退避
+                    continue
+                else:
+                    raise Exception(f"DashScope连接最终失败: {str(e)}")
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"⚠️ DashScope API异常，第{attempt + 1}次重试: {str(e)}")
+                    time.sleep(2 ** attempt)  # 指数退避
+                    continue
+                else:
+                    raise Exception(f"Error calling DashScope API: {str(e)}")
     
     async def _agenerate(
         self,

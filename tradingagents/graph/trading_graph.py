@@ -1,6 +1,11 @@
 # TradingAgents/graph/trading_graph.py
+# -*- coding: utf-8 -*-
 
+# 修复Windows Unicode编码问题
 import os
+import sys
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 from pathlib import Path
 import json
 from datetime import date

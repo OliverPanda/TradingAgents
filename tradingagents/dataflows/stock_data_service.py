@@ -5,6 +5,11 @@
 实现MongoDB -> 通达信API的完整降级机制
 """
 
+# 修复Windows Unicode编码问题
+import os
+import sys
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 import pandas as pd
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta

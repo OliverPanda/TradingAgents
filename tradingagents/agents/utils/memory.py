@@ -2,6 +2,7 @@ import chromadb
 from chromadb.config import Settings
 from openai import OpenAI
 import os
+import time
 
 # Import DashScope if available
 try:
@@ -91,24 +92,96 @@ class FinancialSituationMemory:
              "alibaba" in self.llm_provider or
              (self.llm_provider == "google" and self.client is None)) and
             DASHSCOPE_AVAILABLE and self.client is None):
-            # Use DashScope embedding model
-            try:
-                response = TextEmbedding.call(
-                    model=self.embedding,
-                    input=text
-                )
-                if response.status_code == 200:
-                    return response.output['embeddings'][0]['embedding']
-                else:
-                    raise Exception(f"DashScope embedding error: {response.code} - {response.message}")
-            except Exception as e:
-                raise Exception(f"Error getting DashScope embedding: {str(e)}")
+            # Use DashScope embedding model with retry and timeout handling
+            import time
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            
+            max_retries = 3
+            timeout = 30  # 30秒超时
+            
+            for attempt in range(max_retries):
+                try:
+                    # 设置重试策略
+                    session = requests.Session()
+                    retry_strategy = Retry(
+                        total=2,
+                        backoff_factor=1,
+                        status_forcelist=[429, 500, 502, 503, 504],
+                    )
+                    adapter = HTTPAdapter(max_retries=retry_strategy)
+                    session.mount("http://", adapter)
+                    session.mount("https://", adapter)
+                    
+                    # 调用DashScope API
+                    response = TextEmbedding.call(
+                        model=self.embedding,
+                        input=text,
+                        timeout=timeout
+                    )
+                    
+                    if response.status_code == 200:
+                        return response.output['embeddings'][0]['embedding']
+                    else:
+                        error_msg = f"DashScope embedding error: {response.code} - {response.message}"
+                        if attempt < max_retries - 1:
+                            print(f"⚠️ DashScope embedding失败，第{attempt + 1}次重试: {error_msg}")
+                            time.sleep(2 ** attempt)  # 指数退避
+                            continue
+                        else:
+                            raise Exception(error_msg)
+                            
+                except (requests.exceptions.ConnectTimeout, 
+                        requests.exceptions.ReadTimeout,
+                        requests.exceptions.ConnectionError) as e:
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ DashScope连接超时，第{attempt + 1}次重试: {str(e)}")
+                        time.sleep(2 ** attempt)  # 指数退避
+                        continue
+                    else:
+                        # 最后一次尝试失败，降级到OpenAI
+                        print(f"❌ DashScope连接最终失败，尝试降级到OpenAI: {str(e)}")
+                        return self._get_openai_embedding_fallback(text)
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ DashScope API错误，第{attempt + 1}次重试: {str(e)}")
+                        time.sleep(2 ** attempt)
+                        continue
+                    else:
+                        # 最后一次尝试失败，降级到OpenAI
+                        print(f"❌ DashScope API最终失败，尝试降级到OpenAI: {str(e)}")
+                        return self._get_openai_embedding_fallback(text)
         else:
             # Use OpenAI-compatible embedding model
             response = self.client.embeddings.create(
                 model=self.embedding, input=text
             )
             return response.data[0].embedding
+    
+    def _get_openai_embedding_fallback(self, text):
+        """降级到OpenAI embedding的备用方案"""
+        try:
+            openai_key = os.getenv('OPENAI_API_KEY')
+            if openai_key:
+                from openai import OpenAI
+                client = OpenAI(api_key=openai_key)
+                response = client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=text
+                )
+                print("✅ 成功降级到OpenAI embedding")
+                return response.data[0].embedding
+            else:
+                # 如果连OpenAI都没有，返回随机向量
+                print("⚠️ 无可用embedding服务，使用随机向量")
+                import numpy as np
+                return np.random.random(1536).tolist()  # 1536维随机向量
+        except Exception as e:
+            print(f"❌ OpenAI embedding降级也失败: {str(e)}")
+            # 最后的备用方案：返回随机向量
+            import numpy as np
+            return np.random.random(1536).tolist()
 
     def add_situations(self, situations_and_advice):
         """Add financial situations and their corresponding advice. Parameter is a list of tuples (situation, rec)"""

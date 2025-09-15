@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 通达信API数据获取工具
 支持A股、港股实时数据和历史数据
 """
+
+# 修复Windows Unicode编码问题
+import os
+import sys
+os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 import pandas as pd
 import numpy as np
