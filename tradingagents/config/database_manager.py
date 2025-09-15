@@ -43,7 +43,7 @@ class DatabaseManager:
             self.logger.info("python-dotenv未安装，直接读取环境变量")
 
         # 读取启用开关
-        self.mongodb_enabled = os.getenv("MONGODB_ENABLED", "false").lower() == "true"
+        self.mongodb_enabled = os.getenv("MONGODB_ENABLED", "true").lower() == "true"
         self.redis_enabled = os.getenv("REDIS_ENABLED", "false").lower() == "true"
 
         # 从环境变量读取MongoDB配置
@@ -51,8 +51,8 @@ class DatabaseManager:
             "enabled": self.mongodb_enabled,
             "host": os.getenv("MONGODB_HOST", "localhost"),
             "port": int(os.getenv("MONGODB_PORT", "27017")),
-            "username": os.getenv("MONGODB_USERNAME"),
-            "password": os.getenv("MONGODB_PASSWORD"),
+            "username": os.getenv("MONGODB_USERNAME", ""),
+            "password": os.getenv("MONGODB_PASSWORD", ""),
             "database": os.getenv("MONGODB_DATABASE", "tradingagents"),
             "auth_source": os.getenv("MONGODB_AUTH_SOURCE", "admin"),
             "timeout": 2000

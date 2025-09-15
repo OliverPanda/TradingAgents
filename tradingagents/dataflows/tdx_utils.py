@@ -160,8 +160,8 @@ class TongDaXinDataProvider:
     
     def _get_stock_name(self, stock_code: str) -> str:
         """
-        获取股票名称
-        优先级：缓存 -> MongoDB -> 常用股票映射 -> API获取（仅深圳市场） -> 默认格式
+        获取股票名称（智能多数据源）
+        优先级：缓存 -> MongoDB -> 智能解析器 -> 通达信API（仅深圳市场） -> 默认格式
         Args:
             stock_code: 股票代码
         Returns:
@@ -179,7 +179,26 @@ class TongDaXinDataProvider:
             _stock_name_cache[stock_code] = mongodb_name
             return mongodb_name
         
-        # 检查常用股票映射表
+        # 使用智能解析器获取股票名称
+        try:
+            from .stock_name_resolver import get_stock_name_smart
+            smart_name = get_stock_name_smart(stock_code)
+            if smart_name and smart_name != f'股票{stock_code}':
+                _stock_name_cache[stock_code] = smart_name
+                return smart_name
+        except ImportError:
+            try:
+                from stock_name_resolver import get_stock_name_smart
+                smart_name = get_stock_name_smart(stock_code)
+                if smart_name and smart_name != f'股票{stock_code}':
+                    _stock_name_cache[stock_code] = smart_name
+                    return smart_name
+            except Exception as e:
+                print(f"⚠️ 智能解析器获取失败: {e}")
+        except Exception as e:
+            print(f"⚠️ 智能解析器获取失败: {e}")
+        
+        # 检查常用股票映射表（作为备用）
         if stock_code in _common_stock_names:
             name = _common_stock_names[stock_code]
             _stock_name_cache[stock_code] = name
@@ -523,7 +542,7 @@ def _get_mongodb_connection():
             # 从环境变量获取MongoDB配置
             config = {
                 'host': os.getenv('MONGODB_HOST', 'localhost'),
-                'port': int(os.getenv('MONGODB_PORT', 27018)),
+                'port': int(os.getenv('MONGODB_PORT', 27017)),
                 'username': os.getenv('MONGODB_USERNAME'),
                 'password': os.getenv('MONGODB_PASSWORD'),
                 'database': os.getenv('MONGODB_DATABASE', 'tradingagents'),
@@ -574,37 +593,89 @@ def _get_stock_name_from_mongodb(stock_code: str) -> Optional[str]:
         print(f"⚠️ 从MongoDB获取股票名称失败: {e}")
         return None
 
-# 精简的常用股票名称映射（仅包含最常见的股票）
+# 扩展的常用股票名称映射（包含更多上海市场股票）
 _common_stock_names = {
     # 深圳主板
     '000001': '平安银行',
     '000002': '万科A',
     '000858': '五粮液',
     '000895': '双汇发展',
+    '000651': '格力电器',
+    '000333': '美的集团',
+    '000725': '京东方A',
+    '000100': 'TCL科技',
     
     # 深圳中小板
     '002594': '比亚迪',
     '002415': '海康威视',
     '002304': '洋河股份',
+    '002142': '宁波银行',
+    '002271': '东方雨虹',
+    '002475': '立讯精密',
     
     # 深圳创业板
     '300059': '东方财富',
     '300750': '宁德时代',
     '300015': '爱尔眼科',
+    '300274': '阳光电源',
+    '300760': '迈瑞医疗',
+    '300014': '亿纬锂能',
     
-    # 上海主板
-    '600519': '贵州茅台',
+    # 上海主板 - 银行股
     '600036': '招商银行',
     '601398': '工商银行',
-    '601127': '小康股份',
     '600000': '浦发银行',
+    '601166': '兴业银行',
+    '600016': '民生银行',
+    '601288': '农业银行',
+    '601998': '中信银行',
+    '600015': '华夏银行',
+    
+    # 上海主板 - 保险股
     '601318': '中国平安',
+    '601601': '中国太保',
+    '601628': '中国人寿',
+    '601336': '新华保险',
+    
+    # 上海主板 - 白酒股
+    '600519': '贵州茅台',
+    '600809': '山西汾酒',
+    '603369': '今世缘',
+    '600779': '水井坊',
+    
+    # 上海主板 - 医药股
     '600276': '恒瑞医药',
+    '600521': '华海药业',
+    '600867': '通化东宝',
+    '600196': '复星医药',
+    
+    # 上海主板 - 消费股
     '600887': '伊利股份',
+    '600309': '万华化学',
+    '600104': '上汽集团',
+    '600031': '三一重工',
+    '600028': '中国石化',
+    '601857': '中国石油',
+    
+    # 上海主板 - 科技股
+    '600584': '长电科技',
+    '600703': '三安光电',
+    '600745': '闻泰科技',
+    '600460': '士兰微',
+    
+    # 上海主板 - 其他知名股票
+    '603876': '鼎胜新材',
+    '603259': '药明康德',
+    '603501': '韦尔股份',
+    '603288': '海天味业',
+    '603486': '科沃斯',
     
     # 科创板
     '688981': '中芯国际',
     '688599': '天合光能',
+    '688111': '金山办公',
+    '688036': '传音控股',
+    '688223': '晶科能源',
 }
 
 def get_tdx_provider() -> TongDaXinDataProvider:

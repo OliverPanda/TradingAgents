@@ -399,7 +399,7 @@ def update_display(layout, spinner_text=None):
 def get_user_selections():
     """Get all user selections before starting the analysis display."""
     # Display ASCII art welcome message
-    with open("./cli/static/welcome.txt", "r") as f:
+    with open("./cli/static/welcome.txt", "r", encoding="utf-8") as f:
         welcome_ascii = f.read()
 
     # Create welcome box content
@@ -742,6 +742,45 @@ def extract_content_string(content):
     else:
         return str(content)
 
+
+def get_stock_name_for_folder(symbol: str) -> str:
+    """
+    获取股票名称用于文件夹命名
+    
+    Args:
+        symbol: 股票代码
+        
+    Returns:
+        str: 适合文件夹命名的股票名称
+    """
+    try:
+        # 导入股票数据服务
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'tradingagents', 'dataflows'))
+        from stock_data_service import get_stock_data_service
+        
+        # 获取股票信息
+        service = get_stock_data_service()
+        stock_info = service.get_stock_basic_info(symbol)
+        
+        if stock_info and 'error' not in stock_info and stock_info.get('name'):
+            # 清理股票名称，移除不适合文件夹名的字符
+            name = stock_info['name']
+            # 移除特殊字符，只保留字母、数字、中文和基本符号
+            import re
+            clean_name = re.sub(r'[<>:"/\\|?*]', '', name)
+            # 限制长度
+            if len(clean_name) > 20:
+                clean_name = clean_name[:20]
+            return clean_name
+        else:
+            return ""
+            
+    except Exception as e:
+        print(f"⚠️ 获取股票名称失败: {e}")
+        return ""
+
 def run_analysis():
     # First get all user selections
     selections = get_user_selections()
@@ -760,8 +799,10 @@ def run_analysis():
         [analyst.value for analyst in selections["analysts"]], config=config, debug=True
     )
 
-    # Create result directory
-    results_dir = Path(config["results_dir"]) / selections["ticker"] / selections["analysis_date"]
+    # Create result directory with stock name
+    stock_name = get_stock_name_for_folder(selections["ticker"])
+    folder_name = f"{selections['ticker']}_{stock_name}" if stock_name else selections["ticker"]
+    results_dir = Path(config["results_dir"]) / folder_name / selections["analysis_date"]
     results_dir.mkdir(parents=True, exist_ok=True)
     report_dir = results_dir / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -775,7 +816,7 @@ def run_analysis():
             func(*args, **kwargs)
             timestamp, message_type, content = obj.messages[-1]
             content = content.replace("\n", " ")  # Replace newlines with spaces
-            with open(log_file, "a") as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"{timestamp} [{message_type}] {content}\n")
         return wrapper
     
@@ -786,7 +827,7 @@ def run_analysis():
             func(*args, **kwargs)
             timestamp, tool_name, args = obj.tool_calls[-1]
             args_str = ", ".join(f"{k}={v}" for k, v in args.items())
-            with open(log_file, "a") as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"{timestamp} [Tool Call] {tool_name}({args_str})\n")
         return wrapper
 
@@ -799,7 +840,7 @@ def run_analysis():
                 content = obj.report_sections[section_name]
                 if content:
                     file_name = f"{section_name}.md"
-                    with open(report_dir / file_name, "w") as f:
+                    with open(report_dir / file_name, "w", encoding="utf-8") as f:
                         f.write(content)
         return wrapper
 

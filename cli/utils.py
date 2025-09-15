@@ -85,7 +85,10 @@ def get_ticker(market=None) -> str:
             console.print("\n[red]No ticker symbol provided. Exiting...[/red]")
             exit(1)
 
-        return ticker.strip().upper()
+        ticker = ticker.strip().upper()
+        
+        # 添加股票信息确认
+        return confirm_stock_info(ticker)
 
     # Market-specific ticker input with validation
     from rich.console import Console
@@ -115,13 +118,19 @@ def get_ticker(market=None) -> str:
         ticker_to_check = ticker.upper() if market['data_source'] != 'tongdaxin' else ticker
 
         if re.match(market['pattern'], ticker_to_check):
-            # For A-shares, return pure numeric code
-            if market['data_source'] == 'tongdaxin':
-                console.print(f"[green]✅ Valid A-share code: {ticker} (will use TongDaXin data source)[/green]")
-                return ticker
+            # 添加股票信息确认
+            confirmed_ticker = confirm_stock_info(ticker)
+            if confirmed_ticker:
+                # For A-shares, return pure numeric code
+                if market['data_source'] == 'tongdaxin':
+                    console.print(f"[green]✅ Valid A-share code: {ticker} (will use TongDaXin data source)[/green]")
+                    return ticker
+                else:
+                    console.print(f"[green]✅ Valid ticker: {ticker.upper()}[/green]")
+                    return ticker.upper()
             else:
-                console.print(f"[green]✅ Valid ticker: {ticker.upper()}[/green]")
-                return ticker.upper()
+                console.print(f"[yellow]⚠️ 请重新输入股票代码[/yellow]")
+                continue
         else:
             console.print(f"[red]❌ Invalid ticker format[/red]")
             console.print(f"[yellow]Please use correct format: {market['format']}[/yellow]")
@@ -383,3 +392,69 @@ def select_llm_provider() -> tuple[str, str]:
     print(f"You selected: {display_name}\tURL: {url}")
     
     return display_name, url
+
+
+def confirm_stock_info(symbol: str) -> str:
+    """
+    确认股票信息
+
+    Args:
+        symbol: 股票代码
+
+    Returns:
+        str: 确认后的股票代码，如果用户取消则返回None
+    """
+    try:
+        # 导入股票查询工具
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'tradingagents', 'dataflows'))
+        
+        # 使用现有的股票数据服务
+        from stock_data_service import get_stock_data_service
+        
+        # 获取股票信息
+        service = get_stock_data_service()
+        stock_info = service.get_stock_basic_info(symbol)
+        
+        # 如果获取失败，尝试直接使用通达信API
+        if not stock_info or 'error' in stock_info:
+            from tdx_utils import get_tdx_provider
+            provider = get_tdx_provider()
+            if not provider.connected:
+                provider.connect()
+            stock_name = provider._get_stock_name(symbol)
+            stock_info = {
+                'code': symbol,
+                'name': stock_name,
+                'market': '深圳' if symbol.startswith(('00', '30')) else '上海' if symbol.startswith(('60', '68')) else '未知',
+                'category': '深市主板' if symbol.startswith('00') else '创业板' if symbol.startswith('30') else '沪市主板' if symbol.startswith('60') else '未知',
+                'source': 'tdx_direct'
+            }
+        
+        if stock_info and 'error' not in stock_info:
+            # 显示股票信息
+            print(f"\n📊 股票信息确认")
+            print("=" * 50)
+            print(f"🏢 公司名称: {stock_info.get('name', '未知公司')}")
+            print(f"📈 股票代码: {symbol}")
+            print(f"🏛️ 所属市场: {stock_info.get('market', '未知市场')}")
+            print(f"📋 股票类别: {stock_info.get('category', '未知类别')}")
+            print(f"🔗 数据来源: {stock_info.get('source', '未知')}")
+            print("=" * 50)
+            
+            # 询问用户是否确认
+            confirm = input("确认分析此股票? (Y/n): ").strip().lower()
+            return symbol if confirm in ['', 'y', 'yes', '是'] else None
+        else:
+            # 无法获取详细信息，使用基本信息
+            print(f"\n⚠️ 无法获取股票详细信息: {symbol}")
+            print("💡 将使用基本信息进行分析")
+            confirm = input("继续分析? (y/N): ").strip().lower()
+            return symbol if confirm in ['y', 'yes', '是'] else None
+
+    except Exception as e:
+        print(f"❌ 股票信息查询出错: {e}")
+        print("⚠️ 是否继续使用原始股票代码进行分析？")
+        confirm = input("继续分析? (y/N): ").strip().lower()
+        return symbol if confirm in ['y', 'yes', '是'] else None

@@ -25,7 +25,11 @@ try:
     from .tdx_utils import get_tdx_provider, TongDaXinDataProvider
     TDX_AVAILABLE = True
 except ImportError:
-    TDX_AVAILABLE = False
+    try:
+        from tdx_utils import get_tdx_provider, TongDaXinDataProvider
+        TDX_AVAILABLE = True
+    except ImportError:
+        TDX_AVAILABLE = False
 
 try:
     import sys
@@ -99,7 +103,7 @@ class StockDataService:
         
         # 2. 降级到通达信API
         print("🔄 MongoDB不可用，降级到通达信API")
-        if ENHANCED_FETCHER_AVAILABLE:
+        if TDX_AVAILABLE and self.tdx_provider:
             try:
                 result = self._get_from_tdx_api(stock_code)
                 if result:
@@ -144,6 +148,10 @@ class StockDataService:
             if stock_code:
                 # 获取单个股票信息
                 if self.tdx_provider:
+                    # 确保通达信API已连接
+                    if not self.tdx_provider.connected:
+                        self.tdx_provider.connect()
+                    
                     # 使用现有的股票名称获取方法
                     stock_name = self.tdx_provider._get_stock_name(stock_code)
                     return {
@@ -182,11 +190,16 @@ class StockDataService:
     
     def _cache_to_mongodb(self, data: Any) -> bool:
         """将数据缓存到MongoDB"""
-        if not self.db_manager or not self.db_manager.mongodb_db:
+        if not self.db_manager or not self.db_manager.is_mongodb_available():
             return False
         
         try:
-            collection = self.db_manager.mongodb_db['stock_basic_info']
+            mongodb_client = self.db_manager.get_mongodb_client()
+            if not mongodb_client:
+                return False
+            
+            db = mongodb_client[self.db_manager.mongodb_config["database"]]
+            collection = db['stock_basic_info']
             
             if isinstance(data, list):
                 # 批量插入
