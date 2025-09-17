@@ -8,17 +8,21 @@ def create_china_market_analyst(llm, toolkit):
     
     def china_market_analyst_node(state):
         current_date = state["trade_date"]
-        ticker = state["company_of_interest"]
+        ticker = state["ticker"]  # 使用股票代码
+        company_name = state.get("company_name", ticker)  # 使用公司名称
         
         # 中国股票分析工具
         tools = [
             toolkit.get_china_stock_data,
             toolkit.get_china_market_overview,
-            toolkit.get_YFin_data,  # 备用数据源
+            toolkit.get_stockstats_indicators_report_online,
+            toolkit.get_YFin_data_online,  # 备用数据源
         ]
         
         system_message = (
-            """您是一位专业的中国股市分析师，专门分析A股、港股等中国资本市场。您具备深厚的中国股市知识和丰富的本土投资经验。
+            f"""您是一位专业的中国股市分析师，专门分析A股、港股等中国资本市场。您具备深厚的中国股市知识和丰富的本土投资经验。
+
+您正在分析的公司是：{company_name} ({ticker})
 
 您的专业领域包括：
 1. **A股市场分析**: 深度理解A股的独特性，包括涨跌停制度、T+1交易、融资融券等
@@ -45,110 +49,18 @@ def create_china_market_analyst(llm, toolkit):
 确保在报告末尾附上Markdown表格总结关键发现和投资建议。"""
         )
         
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    "您是一位专业的AI助手，与其他分析师协作进行股票分析。"
-                    " 使用提供的工具获取和分析数据。"
-                    " 如果您无法完全回答，没关系；其他分析师会补充您的分析。"
-                    " 专注于您的专业领域，提供高质量的分析见解。"
-                    " 您可以访问以下工具：{tool_names}。\n{system_message}"
-                    "当前分析日期：{current_date}，分析标的：{ticker}。请用中文撰写所有分析内容。",
-                ),
-                MessagesPlaceholder(variable_name="messages"),
-            ]
-        )
-        
-        prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
-        prompt = prompt.partial(current_date=current_date)
-        prompt = prompt.partial(ticker=ticker)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_message),
+            MessagesPlaceholder("messages"),
+        ])
         
         chain = prompt | llm.bind_tools(tools)
-        result = chain.invoke(state["messages"])
         
-        report = ""
+        response = chain.invoke(state)
         
-        if len(result.tool_calls) == 0:
-            report = result.content
+        # 更新状态
+        state["messages"].append(response)
         
-        return {
-            "messages": [result],
-            "china_market_report": report,
-            "sender": "ChinaMarketAnalyst",
-        }
+        return state
     
     return china_market_analyst_node
-
-
-def create_china_stock_screener(llm, toolkit):
-    """创建中国股票筛选器"""
-    
-    def china_stock_screener_node(state):
-        current_date = state["trade_date"]
-        
-        tools = [
-            toolkit.get_china_market_overview,
-        ]
-        
-        system_message = (
-            """您是一位专业的中国股票筛选专家，负责从A股市场中筛选出具有投资价值的股票。
-
-筛选维度包括：
-1. **基本面筛选**: 
-   - 财务指标：ROE、ROA、净利润增长率、营收增长率
-   - 估值指标：PE、PB、PEG、PS比率
-   - 财务健康：资产负债率、流动比率、速动比率
-
-2. **技术面筛选**:
-   - 趋势指标：均线系统、MACD、KDJ
-   - 动量指标：RSI、威廉指标、CCI
-   - 成交量指标：量价关系、换手率
-
-3. **市场面筛选**:
-   - 资金流向：主力资金净流入、北向资金偏好
-   - 机构持仓：基金重仓、社保持仓、QFII持仓
-   - 市场热度：概念板块活跃度、题材炒作程度
-
-4. **政策面筛选**:
-   - 政策受益：国家政策扶持行业
-   - 改革红利：国企改革、混改标的
-   - 监管影响：监管政策变化的影响
-
-筛选策略：
-- **价值投资**: 低估值、高分红、稳定增长
-- **成长投资**: 高增长、新兴行业、技术创新
-- **主题投资**: 政策驱动、事件催化、概念炒作
-- **周期投资**: 经济周期、行业周期、季节性
-
-请基于当前市场环境和政策背景，提供专业的股票筛选建议。"""
-        )
-        
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system", 
-                    "您是一位专业的股票筛选专家。"
-                    " 使用提供的工具分析市场概况。"
-                    " 您可以访问以下工具：{tool_names}。\n{system_message}"
-                    "当前日期：{current_date}。请用中文撰写分析内容。",
-                ),
-                MessagesPlaceholder(variable_name="messages"),
-            ]
-        )
-        
-        prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
-        prompt = prompt.partial(current_date=current_date)
-        
-        chain = prompt | llm.bind_tools(tools)
-        result = chain.invoke(state["messages"])
-        
-        return {
-            "messages": [result],
-            "stock_screening_report": result.content,
-            "sender": "ChinaStockScreener",
-        }
-    
-    return china_stock_screener_node

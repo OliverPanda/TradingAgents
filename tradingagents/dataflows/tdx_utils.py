@@ -741,8 +741,7 @@ def get_china_stock_data(stock_code: str, start_date: str, end_date: str) -> str
             symbol=stock_code,
             start_date=start_date,
             end_date=end_date,
-            data_source="tdx",
-            max_age_hours=6  # 6小时内的缓存有效
+            data_source="tdx"
         )
 
         if cache_key:

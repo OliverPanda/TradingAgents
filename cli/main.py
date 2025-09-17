@@ -136,37 +136,37 @@ class MessageBuffer:
                 "fundamentals_report",
             ]
         ):
-            report_parts.append("## Analyst Team Reports")
+            report_parts.append("## 分析师团队报告")
             if self.report_sections["market_report"]:
                 report_parts.append(
-                    f"### Market Analysis\n{self.report_sections['market_report']}"
+                    f"### 市场分析\n{self.report_sections['market_report']}"
                 )
             if self.report_sections["sentiment_report"]:
                 report_parts.append(
-                    f"### Social Sentiment\n{self.report_sections['sentiment_report']}"
+                    f"### 社交情绪分析\n{self.report_sections['sentiment_report']}"
                 )
             if self.report_sections["news_report"]:
                 report_parts.append(
-                    f"### News Analysis\n{self.report_sections['news_report']}"
+                    f"### 新闻分析\n{self.report_sections['news_report']}"
                 )
             if self.report_sections["fundamentals_report"]:
                 report_parts.append(
-                    f"### Fundamentals Analysis\n{self.report_sections['fundamentals_report']}"
+                    f"### 基本面分析\n{self.report_sections['fundamentals_report']}"
                 )
 
         # Research Team Reports
         if self.report_sections["investment_plan"]:
-            report_parts.append("## Research Team Decision")
+            report_parts.append("## 研究团队决策")
             report_parts.append(f"{self.report_sections['investment_plan']}")
 
         # Trading Team Reports
         if self.report_sections["trader_investment_plan"]:
-            report_parts.append("## Trading Team Plan")
+            report_parts.append("## 交易团队计划")
             report_parts.append(f"{self.report_sections['trader_investment_plan']}")
 
         # Portfolio Management Decision
         if self.report_sections["final_trade_decision"]:
-            report_parts.append("## Portfolio Management Decision")
+            report_parts.append("## 投资组合管理决策")
             report_parts.append(f"{self.report_sections['final_trade_decision']}")
 
         self.final_report = "\n\n".join(report_parts) if report_parts else None
@@ -798,6 +798,17 @@ def run_analysis():
     graph = TradingAgentsGraph(
         [analyst.value for analyst in selections["analysts"]], config=config, debug=True
     )
+    
+    # 获取股票信息
+    stock_info = None
+    try:
+        from tradingagents.dataflows.stock_data_service import get_stock_data_service
+        service = get_stock_data_service()
+        stock_info = service.get_stock_basic_info(selections["ticker"])
+        if stock_info and 'error' not in stock_info:
+            print(f"📊 股票信息: {stock_info.get('name', 'N/A')} ({selections['ticker']})")
+    except Exception as e:
+        print(f"⚠️ 获取股票信息失败: {e}")
 
     # Create result directory with stock name
     stock_name = get_stock_name_for_folder(selections["ticker"])
@@ -839,9 +850,18 @@ def run_analysis():
             if section_name in obj.report_sections and obj.report_sections[section_name] is not None:
                 content = obj.report_sections[section_name]
                 if content:
+                    # 翻译内容为中文
+                    try:
+                        from tradingagents.utils.baidu_translator import translate_report_section
+                        translated_content = translate_report_section(section_name, content)
+                        print(f"🌐 正在翻译报告章节: {section_name}")
+                    except Exception as e:
+                        print(f"⚠️ 翻译失败，使用原文: {e}")
+                        translated_content = content
+                    
                     file_name = f"{section_name}.md"
                     with open(report_dir / file_name, "w", encoding="utf-8") as f:
-                        f.write(content)
+                        f.write(translated_content)
         return wrapper
 
     message_buffer.add_message = save_message_decorator(message_buffer, "add_message")
@@ -889,7 +909,7 @@ def run_analysis():
 
         # Initialize state and get graph args
         init_agent_state = graph.propagator.create_initial_state(
-            selections["ticker"], selections["analysis_date"]
+            selections["ticker"], selections["analysis_date"], stock_info
         )
         args = graph.propagator.get_graph_args()
 

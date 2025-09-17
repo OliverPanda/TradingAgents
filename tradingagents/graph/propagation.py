@@ -16,12 +16,22 @@ class Propagator:
         self.max_recur_limit = max_recur_limit
 
     def create_initial_state(
-        self, company_name: str, trade_date: str
+        self, company_name: str, trade_date: str, stock_info: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Create the initial state for the agent graph."""
+        # 如果有股票信息，使用正确的公司名称
+        if stock_info and 'name' in stock_info:
+            actual_company_name = stock_info['name']
+            company_description = f"{actual_company_name} ({company_name})"
+        else:
+            actual_company_name = company_name
+            company_description = company_name
+        
         return {
-            "messages": [("human", company_name)],
-            "company_of_interest": company_name,
+            "messages": [("human", company_description)],
+            "company_of_interest": company_description,
+            "ticker": company_name,  # 添加股票代码字段
+            "company_name": actual_company_name,  # 添加公司名称字段
             "trade_date": str(trade_date),
             "investment_debate_state": InvestDebateState(
                 {"history": "", "current_response": "", "count": 0}

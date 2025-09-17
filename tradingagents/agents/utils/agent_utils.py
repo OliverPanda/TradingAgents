@@ -417,3 +417,46 @@ class Toolkit:
         )
 
         return openai_fundamentals_results
+
+    @staticmethod
+    @tool
+    def get_china_stock_data(
+        stock_code: Annotated[str, "Chinese stock code (e.g., 600580, 000001)"],
+        start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
+        end_date: Annotated[str, "End date in yyyy-mm-dd format"],
+    ) -> str:
+        """
+        Retrieve Chinese stock data using TongDaXin API as primary source.
+        This is the recommended tool for Chinese A-share stocks.
+        Args:
+            stock_code (str): Chinese stock code (e.g., 600580, 000001)
+            start_date (str): Start date in yyyy-mm-dd format
+            end_date (str): End date in yyyy-mm-dd format
+        Returns:
+            str: A formatted dataframe containing Chinese stock price data
+        """
+        try:
+            from tradingagents.dataflows.tdx_utils import get_china_stock_data
+            result_data = get_china_stock_data(stock_code, start_date, end_date)
+            return result_data
+        except Exception as e:
+            return f"Error retrieving Chinese stock data for {stock_code}: {str(e)}"
+
+    @staticmethod
+    @tool
+    def get_china_market_overview(
+        curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    ) -> str:
+        """
+        Get overview of Chinese stock market conditions.
+        Args:
+            curr_date (str): Current date in yyyy-mm-dd format
+        Returns:
+            str: A formatted report containing Chinese market overview
+        """
+        try:
+            from tradingagents.dataflows.tdx_utils import get_market_overview
+            result_data = get_market_overview(curr_date)
+            return result_data
+        except Exception as e:
+            return f"Error retrieving Chinese market overview: {str(e)}"
